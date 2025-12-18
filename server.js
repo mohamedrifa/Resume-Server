@@ -19,7 +19,7 @@ app.post("/generate-pdf", async (req, res) => {
   try {
     browser = await puppeteer.launch({
       headless: true,
-      executablePath: puppeteer.executablePath(), // 🔥 IMPORTANT
+      executablePath: puppeteer.executablePath(), // ✅ uses installed Chrome
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
