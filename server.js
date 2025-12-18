@@ -18,14 +18,11 @@ app.post("/generate-pdf", async (req, res) => {
 
   try {
     browser = await puppeteer.launch({
-      headless: true,
-      executablePath: puppeteer.executablePath(), // ✅ uses installed Chrome
+      headless: "new",
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--single-process"
+        "--disable-dev-shm-usage"
       ],
     });
 
@@ -37,12 +34,6 @@ app.post("/generate-pdf", async (req, res) => {
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
-      margin: {
-        top: "20px",
-        right: "20px",
-        bottom: "20px",
-        left: "20px",
-      },
     });
 
     res.setHeader("Content-Type", "application/pdf");
@@ -52,7 +43,6 @@ app.post("/generate-pdf", async (req, res) => {
     );
 
     res.send(Buffer.from(pdfBuffer));
-
   } catch (err) {
     console.error("PDF generation error:", err);
     res.status(500).json({ error: "PDF generation failed" });
@@ -65,7 +55,7 @@ app.get("/", (req, res) => {
   res.send("PDF server running");
 });
 
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`PDF server running on port ${PORT}`);
 });
