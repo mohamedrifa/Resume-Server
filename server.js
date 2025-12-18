@@ -4,11 +4,9 @@ import cors from "cors";
 
 const app = express();
 
-// Middleware
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-// PDF generation route
 app.post("/generate-pdf", async (req, res) => {
   const { html, fileName } = req.body;
 
@@ -21,56 +19,53 @@ app.post("/generate-pdf", async (req, res) => {
   try {
     browser = await puppeteer.launch({
       headless: true,
+      executablePath: puppeteer.executablePath(), // 🔥 IMPORTANT
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
-        "--single-process",
+        "--single-process"
       ],
     });
 
     const page = await browser.newPage();
 
-    await page.setContent(html, {
-      waitUntil: "networkidle0",
-    });
-
-    // Ensure fonts & external styles are fully loaded
+    await page.setContent(html, { waitUntil: "networkidle0" });
     await page.evaluateHandle("document.fonts.ready");
 
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
+      margin: {
+        top: "20px",
+        right: "20px",
+        bottom: "20px",
+        left: "20px",
+      },
     });
 
-    // ✅ Correct headers (NO Content-Length)
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${fileName || "document.pdf"}"`
+      `attachment; filename="${fileName || "Resume.pdf"}"`
     );
 
-    // ✅ Send buffer safely
     res.send(Buffer.from(pdfBuffer));
 
-  } catch (error) {
-    console.error("PDF generation error:", error);
+  } catch (err) {
+    console.error("PDF generation error:", err);
     res.status(500).json({ error: "PDF generation failed" });
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
   }
 });
 
-// Health check (optional but useful for Render)
 app.get("/", (req, res) => {
   res.send("PDF server running");
 });
 
-// Start server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`PDF server running on port ${PORT}`);
 });
