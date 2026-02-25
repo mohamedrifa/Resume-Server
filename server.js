@@ -15,37 +15,36 @@ app.post("/generate-pdf", async (req, res) => {
   }
 
   let browser;
-
   try {
     browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--single-process",
-        "--disable-gpu",
-      ],
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    await page.setContent(html, {
+      waitUntil: "networkidle0",
+    });
 
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
     });
 
+    // ✅ CRITICAL HEADERS
     res.set({
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${fileName || "resume"}.pdf"`,
+      "Content-Disposition": `attachment; filename="${fileName}"`,
+      "Content-Length": pdfBuffer.length,
     });
 
-    res.send(pdfBuffer);
+    // ✅ SEND BUFFER DIRECTLY
+    res.end(pdfBuffer);
 
   } catch (err) {
-    console.error("PDF ERROR:", err);
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "PDF generation failed" });
   } finally {
     if (browser) await browser.close();
   }
