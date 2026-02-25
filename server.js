@@ -50,7 +50,6 @@ app.post("/generate-pdf", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, "localhost", () => {
-  console.log(`PDF server running on http://localhost:${PORT}`);
+app.listen(5000, () => {
+  console.log("PDF server running on http://localhost:5000");
 });
