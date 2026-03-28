@@ -1,57 +1,72 @@
 // server.js
 import express from "express";
 import puppeteer from "puppeteer";
-import cors from "cors";
 
 const app = express();
-app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-const PORT = process.env.PORT || 5000;
+let browser; // single browser instance
 
+// Launch browser at server startup
+async function initBrowser() {
+  browser = await puppeteer.launch({
+    headless: "new", // use headless chromium
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+  console.log("🟢 Puppeteer browser launched");
+}
+
+// Gracefully close browser on exit
+process.on("exit", async () => {
+  if (browser) await browser.close();
+});
+process.on("SIGINT", async () => {
+  if (browser) await browser.close();
+  process.exit();
+});
+process.on("SIGTERM", async () => {
+  if (browser) await browser.close();
+  process.exit();
+});
+
+// PDF endpoint
 app.post("/generate-pdf", async (req, res) => {
   const { html, fileName } = req.body;
 
-  if (!html) {
-    return res.status(400).json({ error: "HTML is required" });
-  }
+  if (!html) return res.status(400).json({ error: "HTML is required" });
 
-  let browser;
+  let page;
   try {
-    browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
-    const page = await browser.newPage();
-
-    await page.setContent(html, {
-      waitUntil: "networkidle0",
-    });
+    page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
 
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
     });
 
-    // ✅ CRITICAL HEADERS
+    await page.close();
+
+    // Critical headers for binary PDF
     res.set({
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${fileName}"`,
+      "Content-Disposition": `attachment; filename="${fileName || "file"}.pdf"`,
       "Content-Length": pdfBuffer.length,
+      "Cache-Control": "no-store",
     });
 
-    // ✅ SEND BUFFER DIRECTLY
-    res.end(pdfBuffer);
+    res.send(pdfBuffer); // send as binary
 
   } catch (err) {
-    console.error(err);
+    console.error("❌ PDF generation error:", err);
+    if (page) await page.close();
     res.status(500).json({ error: "PDF generation failed" });
-  } finally {
-    if (browser) await browser.close();
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`PDF server running on http://localhost:${PORT}`);
+// Start server
+const PORT = 5000;
+app.listen(PORT, async () => {
+  await initBrowser();
+  console.log(`📄 PDF server running on http://localhost:${PORT}`);
 });
