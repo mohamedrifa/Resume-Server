@@ -3,6 +3,7 @@ import express from "express";
 import puppeteer from "puppeteer";
 
 const app = express();
+app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 let browser; // single browser instance
