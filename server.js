@@ -11,57 +11,114 @@ const PORT = process.env.PORT || 5000;
 
 let browser;
 
+// 🔹 Initialize Puppeteer
 async function initBrowser() {
-  browser = await puppeteer.launch({
-    headless: "new",
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
-  console.log("🟢 Puppeteer browser launched");
+  try {
+    browser = await puppeteer.launch({
+      headless: "new",
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
+    });
+
+    console.log("🟢 Puppeteer browser launched");
+  } catch (err) {
+    console.error("❌ Failed to launch browser:", err);
+  }
 }
 
-// Graceful shutdown
+// 🔹 Close browser safely
 async function closeBrowser() {
-  if (browser) await browser.close();
+  try {
+    if (browser) {
+      await browser.close();
+      console.log("🔴 Puppeteer browser closed");
+    }
+  } catch (err) {
+    console.error("Error closing browser:", err);
+  }
 }
-process.on("exit", closeBrowser);
-process.on("SIGINT", () => { closeBrowser().then(() => process.exit()); });
-process.on("SIGTERM", () => { closeBrowser().then(() => process.exit()); });
 
+// 🔹 Graceful shutdown
+process.on("exit", closeBrowser);
+process.on("SIGINT", async () => {
+  await closeBrowser();
+  process.exit();
+});
+process.on("SIGTERM", async () => {
+  await closeBrowser();
+  process.exit();
+});
+
+// 🔹 PDF API
 app.post("/generate-pdf", async (req, res) => {
   const { html, fileName } = req.body;
-  if (!html) return res.status(400).json({ error: "HTML is required" });
+
+  if (!html) {
+    return res.status(400).json({ error: "HTML is required" });
+  }
 
   let page;
+
   try {
+    // Ensure browser is running
+    if (!browser) {
+      console.log("⚠️ Browser not initialized. Launching...");
+      await initBrowser();
+    }
+
     page = await browser.newPage();
 
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    // Load HTML safely
+    await page.setContent(html, {
+      waitUntil: "domcontentloaded",
+    });
 
+    // Generate PDF
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
     });
 
-    await page.close();
+    // Send response correctly
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${fileName || "file"}.pdf"`,
+      "Content-Length": pdfBuffer.length,
+      "Cache-Control": "no-store",
+    });
 
-    // ✅ MUST: headers to prevent corruption
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${fileName || "file"}.pdf"`
-    );
-    res.setHeader("Content-Length", pdfBuffer.length);
-    res.setHeader("Cache-Control", "no-store");
+    res.end(pdfBuffer);
 
-    // ✅ Send buffer directly
-    res.send(pdfBuffer);
   } catch (err) {
-    console.error("❌ PDF generation failed:", err);
-    if (page) await page.close();
-    res.status(500).json({ error: "PDF generation failed" });
+    console.error("❌ PDF generation failed:");
+    console.error(err.message);
+    console.error(err.stack);
+
+    res.status(500).json({
+      error: "PDF generation failed",
+      details: err.message,
+    });
+
+  } finally {
+    try {
+      if (page && !page.isClosed()) {
+        await page.close();
+      }
+    } catch (closeErr) {
+      console.error("⚠️ Error closing page:", closeErr);
+    }
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`PDF server running on Port: ${PORT}`);
-});
+// 🔹 Start server AFTER browser init
+(async () => {
+  await initBrowser();
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 PDF server running on http://0.0.0.0:${PORT}`);
+  });
+})();
