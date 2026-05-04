@@ -9,6 +9,7 @@ app.use(express.json({ limit: "10mb" }));
 
 const PORT = process.env.PORT || 5000;
 
+
 let browser;
 // 🔹 Initialize Puppeteer
 async function initBrowser() {
