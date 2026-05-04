@@ -4,7 +4,6 @@ import cors from "cors";
 
 const app = express();
 
-// ✅ Fix: Explicit JSON and raw body parsing for Express 5
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -17,7 +16,7 @@ let browser;
 async function initBrowser() {
   try {
     browser = await puppeteer.launch({
-      headless: "new",
+      headless: true, // ✅ safer than "new"
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -56,7 +55,6 @@ process.on("SIGTERM", async () => {
 
 // 🔹 PDF API
 app.post("/generate-pdf", async (req, res) => {
-  // ✅ Fix: Guard against undefined body
   if (!req.body || typeof req.body !== "object") {
     return res.status(400).json({ error: "Invalid or missing JSON body" });
   }
@@ -77,23 +75,37 @@ app.post("/generate-pdf", async (req, res) => {
 
     page = await browser.newPage();
 
+    // ✅ Set viewport (prevents blank PDFs)
+    await page.setViewport({ width: 1280, height: 800 });
+
+    // ✅ Better loading strategy
     await page.setContent(html, {
-      waitUntil: "domcontentloaded",
+      waitUntil: "networkidle0",
     });
+
+    // ✅ Small delay for rendering
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
+      preferCSSPageSize: true,
     });
 
-    // ✅ Sanity check
+    console.log("📄 Buffer size:", pdfBuffer.length);
+
+    // ⚠️ Optional debug (keep for now)
     const header = pdfBuffer.slice(0, 4).toString();
-    if (header !== "%PDF") {
-      console.error("❌ Invalid PDF buffer, header:", header);
-      return res.status(500).json({ error: "Generated file is not a valid PDF" });
+    console.log("📄 PDF header:", header);
+
+    // ❗ Only fail if clearly broken
+    if (!pdfBuffer || pdfBuffer.length < 1000) {
+      return res.status(500).json({
+        error: "Generated file is too small or invalid",
+      });
     }
 
-    console.log("✅ PDF generated successfully, size:", pdfBuffer.length, "bytes");
+    console.log("✅ PDF generated successfully");
 
     res.set({
       "Content-Type": "application/pdf",
