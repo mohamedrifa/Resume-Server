@@ -1,16 +1,18 @@
-// server.js
 import express from "express";
 import puppeteer from "puppeteer";
 import cors from "cors";
 
 const app = express();
+
+// ✅ Fix: Explicit JSON and raw body parsing for Express 5
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 const PORT = process.env.PORT || 5000;
 
-
 let browser;
+
 // 🔹 Initialize Puppeteer
 async function initBrowser() {
   try {
@@ -23,7 +25,6 @@ async function initBrowser() {
         "--disable-gpu",
       ],
     });
-
     console.log("🟢 Puppeteer browser launched");
   } catch (err) {
     console.error("❌ Failed to launch browser:", err);
@@ -55,6 +56,11 @@ process.on("SIGTERM", async () => {
 
 // 🔹 PDF API
 app.post("/generate-pdf", async (req, res) => {
+  // ✅ Fix: Guard against undefined body
+  if (!req.body || typeof req.body !== "object") {
+    return res.status(400).json({ error: "Invalid or missing JSON body" });
+  }
+
   const { html, fileName } = req.body;
 
   if (!html) {
@@ -64,7 +70,6 @@ app.post("/generate-pdf", async (req, res) => {
   let page;
 
   try {
-    // Ensure browser is running
     if (!browser) {
       console.log("⚠️ Browser not initialized. Launching...");
       await initBrowser();
@@ -72,18 +77,24 @@ app.post("/generate-pdf", async (req, res) => {
 
     page = await browser.newPage();
 
-    // Load HTML safely
     await page.setContent(html, {
       waitUntil: "domcontentloaded",
     });
 
-    // Generate PDF
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
     });
 
-    // Send response correctly
+    // ✅ Sanity check
+    const header = pdfBuffer.slice(0, 4).toString();
+    if (header !== "%PDF") {
+      console.error("❌ Invalid PDF buffer, header:", header);
+      return res.status(500).json({ error: "Generated file is not a valid PDF" });
+    }
+
+    console.log("✅ PDF generated successfully, size:", pdfBuffer.length, "bytes");
+
     res.set({
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="${fileName || "file"}.pdf"`,
@@ -112,6 +123,11 @@ app.post("/generate-pdf", async (req, res) => {
       console.error("⚠️ Error closing page:", closeErr);
     }
   }
+});
+
+// 🔹 Health check
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", browser: !!browser });
 });
 
 // 🔹 Start server AFTER browser init
